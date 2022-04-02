@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore'
+import db from './firebase'
 import { Grid } from './components/grid/Grid'
 import { Keyboard } from './components/keyboard/Keyboard'
+import { UsersModal } from './components/modals/UsersModal'
 import { InfoModal } from './components/modals/InfoModal'
 import { StatsModal } from './components/modals/StatsModal'
 import { SettingsModal } from './components/modals/SettingsModal'
@@ -49,6 +52,9 @@ function App() {
     useAlert()
   const [currentGuess, setCurrentGuess] = useState('')
   const [isGameWon, setIsGameWon] = useState(false)
+  const [users, setUsers] = useState<any>([])
+  const [selectedUser, setSelectedUser] = useState(localStorage.getItem('user'))
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false)
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
@@ -90,6 +96,23 @@ function App() {
       ? localStorage.getItem('gameMode') === 'hard'
       : false
   )
+
+  const usersCollectionRef = collection(db, 'users')
+
+  useEffect(() => {
+    const getUsers = async () => {
+      const data = await getDocs(usersCollectionRef)
+      const users = data.docs.map((doc) => ({ ...doc.data(), id: doc.id }))
+      setUsers(users)
+    }
+    getUsers()
+  }, [])
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setIsUsersModalOpen(true)
+    }
+  }, [])
 
   useEffect(() => {
     // if no game state on load,
@@ -177,6 +200,15 @@ function App() {
     )
   }
 
+  const submitResults = async (id: string, success: boolean) => {
+    const userDoc = doc(db, 'users', id)
+    await updateDoc(userDoc, {
+      completed: true,
+      number_guesses: guesses.length + 1,
+      success,
+    })
+  }
+
   const onEnter = () => {
     if (isGameWon || isGameLost) {
       return
@@ -226,11 +258,13 @@ function App() {
 
       if (winningWord) {
         setStats(addStatsForCompletedGame(stats, guesses.length))
+        submitResults(localStorage.getItem('user') || '', true)
         return setIsGameWon(true)
       }
 
       if (guesses.length === MAX_CHALLENGES - 1) {
         setStats(addStatsForCompletedGame(stats, guesses.length + 1))
+        submitResults(localStorage.getItem('user') || '', false)
         setIsGameLost(true)
         showErrorAlert(CORRECT_WORD_MESSAGE(solution), {
           persist: true,
@@ -262,6 +296,12 @@ function App() {
           onEnter={onEnter}
           guesses={guesses}
           isRevealing={isRevealing}
+        />
+        <UsersModal
+          isOpen={isUsersModalOpen}
+          handleClose={() => setIsUsersModalOpen(false)}
+          handleSelectUser={setSelectedUser}
+          users={users}
         />
         <InfoModal
           isOpen={isInfoModalOpen}
